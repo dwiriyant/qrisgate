@@ -1,0 +1,197 @@
+openapi: 3.0.3
+info:
+  title: QRIS Gate API
+  version: 0.1.0
+  description: Convert static merchant QRIS into dynamic payment QR codes.
+servers:
+  - url: http://localhost:8080
+paths:
+  /healthz:
+    get:
+      summary: Liveness probe
+      responses:
+        "200":
+          description: OK
+  /readyz:
+    get:
+      summary: Readiness probe (Postgres + optional Redis)
+      responses:
+        "200":
+          description: Ready
+        "503":
+          description: Dependency unavailable
+  /v1/apps:
+    post:
+      summary: Create application (admin)
+      security:
+        - AdminBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAppRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateAppResponse"
+  /v1/apps/{id}/webhooks:
+    post:
+      summary: Register webhook endpoint (admin)
+      security:
+        - AdminBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWebhookRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateWebhookResponse"
+  /v1/payments:
+    post:
+      summary: Create payment (idempotent on app_id + order_id)
+      security:
+        - ApiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePaymentRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentResponse"
+  /v1/payments/{id}:
+    get:
+      summary: Get payment
+      security:
+        - ApiKey: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentResponse"
+components:
+  securitySchemes:
+    AdminBearer:
+      type: http
+      scheme: bearer
+    ApiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+  schemas:
+    CreateAppRequest:
+      type: object
+      required: [name, merchant_qris]
+      properties:
+        name:
+          type: string
+        merchant_qris:
+          type: string
+          description: Static EMVCo QRIS payload
+    CreateAppResponse:
+      type: object
+      properties:
+        app:
+          type: object
+        api_key:
+          type: string
+          description: Shown once; store securely
+    CreateWebhookRequest:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+          format: uri
+          description: HTTPS callback URL
+        secret:
+          type: string
+          description: Optional; server generates whsec_… if omitted
+    CreateWebhookResponse:
+      type: object
+      properties:
+        webhook:
+          type: object
+        secret:
+          type: string
+          description: Present only when server generated the secret
+    FeeInput:
+      type: object
+      required: [type, value]
+      properties:
+        type:
+          type: string
+          enum: [fixed, percentage]
+        value:
+          type: number
+    CreatePaymentRequest:
+      type: object
+      required: [order_id, amount]
+      properties:
+        order_id:
+          type: string
+        amount:
+          type: integer
+          format: int64
+          description: Amount in IDR (whole rupiah)
+        fee:
+          $ref: "#/components/schemas/FeeInput"
+        callback_url:
+          type: string
+          format: uri
+        expires_in:
+          type: integer
+          description: TTL in seconds (overrides DEFAULT_EXPIRES_IN_SEC)
+    PaymentResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        app_id:
+          type: string
+        order_id:
+          type: string
+        amount:
+          type: integer
+          format: int64
+        status:
+          type: string
+          enum: [pending, paid, expired, failed]
+        qris_string:
+          type: string
+        qr_image_base64:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+        callback_url:
+          type: string

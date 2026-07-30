@@ -1,0 +1,25 @@
+# Observability stack — use with: docker compose -f docker-compose.yml -f docker-compose.obs.yml up -d
+services:
+  jaeger:
+    image: jaegertracing/all-in-one:1.62
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686" # UI
+      - "4317:4317"   # OTLP gRPC
+
+  prometheus:
+    image: prom/prometheus:v2.55.0
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9091:9090"
+    depends_on:
+      - api
+
+  api:
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: jaeger:4317
+    depends_on:
+      jaeger:
+        condition: service_started

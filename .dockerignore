@@ -1,0 +1,9 @@
+.git
+.env
+graphify-out/
+coverage.out
+*.test
+bin/
+dist/
+.idea/
+.vscode/
