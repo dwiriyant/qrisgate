@@ -16,9 +16,9 @@ Built with Go 1.26, [Echo v4](https://echo.labstack.com/), [pgx v5](https://gith
 - Optional fee, expiry, and per-payment callback URL
 - Webhook endpoint registration
 - Returns `qris_string` and `qr_image_base64` (PNG)
-- Readiness probe (`/readyz`) for Postgres and Redis
+- Readiness probe (`/readyz`) for Postgres
 - Rate limiting and request body limits on payment routes
-- Goose SQL migrations, Docker Compose for local Postgres/Redis/API
+- Goose SQL migrations, Docker Compose for local Postgres/API
 - Prometheus metrics on a separate port (`METRICS_ADDR`)
 - Optional OTLP tracing via `OTEL_EXPORTER_OTLP_ENDPOINT`
 
@@ -61,7 +61,7 @@ To trace locally without Docker, run [Jaeger all-in-one](https://www.jaegertraci
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | GET | `/healthz` | — | Liveness |
-| GET | `/readyz` | — | Readiness (DB + Redis) |
+| GET | `/readyz` | — | Readiness (Postgres) |
 | POST | `/v1/apps` | `Authorization: Bearer $ADMIN_TOKEN` | Register app + static QRIS |
 | POST | `/v1/apps/:id/webhooks` | Bearer admin | Register HTTPS webhook |
 | POST | `/v1/payments` | `X-API-Key` | Create dynamic QR (idempotent) |
@@ -110,7 +110,6 @@ curl -s -X POST http://localhost:8080/v1/payments \
 |----------|---------|-------------|
 | `ADDR` | `:8080` | HTTP listen address |
 | `DATABASE_URL` | local Postgres DSN | Required for API |
-| `REDIS_ADDR` | `localhost:6379` | Used by `/readyz` readiness check |
 | `ADMIN_TOKEN` | — | Bearer token for admin routes |
 | `RATE_LIMIT_PER_MIN` | `100` | Per-IP limit on `/v1/payments` |
 | `DEFAULT_EXPIRES_IN_SEC` | `900` | Default payment TTL (15 min) |
@@ -156,7 +155,7 @@ Issues and pull requests are welcome. For code changes:
 4. New DB changes → new file under `db/migrations/`.
 5. API changes → update `internal/openapi/openapi.yaml` and this README.
 
-You need Go **1.26+** and PostgreSQL (Redis optional for `/readyz`). CI runs tests with a ~60% coverage floor.
+You need Go **1.26+** and PostgreSQL. CI runs tests with a ~60% coverage floor.
 
 ## Request flow (handlers)
 
@@ -166,7 +165,7 @@ HTTP (Echo)
        ├─ middleware.go           Recover, RequestID, CORS, logger, Prometheus
        ├─ otelecho                distributed traces (when OTLP configured)
        │
-       ├─ GET /readyz             health.ReadyHandler (Postgres + Redis)
+       ├─ GET /readyz             health.ReadyHandler (Postgres)
        │
        ├─ POST /v1/apps           admin.Handler.CreateApp
        │     └─ admin.Service      validate merchant_qris → generate qg_ API key → store app

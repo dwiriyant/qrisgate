@@ -12,7 +12,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
-	"github.com/redis/go-redis/v9"
 
 	"github.com/qrisgate/qrisgate/cmd/api/route"
 	"github.com/qrisgate/qrisgate/internal/admin"
@@ -48,14 +47,6 @@ func main() {
 	}
 	defer pool.Close()
 
-	var rdb *redis.Client
-	if cfg.RedisAddr != "" {
-		rdb = redis.NewClient(&redis.Options{Addr: cfg.RedisAddr})
-		if err := rdb.Ping(ctx).Err(); err != nil {
-			log.Warn("redis ping failed; readyz will report degraded", "err", err)
-		}
-	}
-
 	if err := runMigrations(cfg.DatabaseURL); err != nil {
 		log.Error("migrations failed", "err", err)
 		os.Exit(1)
@@ -72,7 +63,6 @@ func main() {
 	route.Register(e, route.Deps{
 		Config:  cfg,
 		Pool:    pool,
-		Redis:   rdb,
 		Admin:   admin.NewHandler(adminSvc),
 		Payment: payment.NewHandler(paySvc),
 	})
@@ -99,9 +89,6 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = server.Shutdown(shutdownCtx)
-	if rdb != nil {
-		_ = rdb.Close()
-	}
 }
 
 func runMigrations(databaseURL string) error {

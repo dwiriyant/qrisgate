@@ -13,11 +13,6 @@ services:
       timeout: 5s
       retries: 5
 
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-
   api:
     build:
       context: .
@@ -25,7 +20,6 @@ services:
     environment:
       ADDR: ":8080"
       DATABASE_URL: postgres://qrisgate:qrisgate@postgres:5432/qrisgate?sslmode=disable
-      REDIS_ADDR: redis:6379
       ADMIN_TOKEN: dev-admin-token
       METRICS_ADDR: ":9090"
     ports:

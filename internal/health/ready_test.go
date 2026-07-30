@@ -26,7 +26,7 @@ func TestReadyHandler_dbUnavailable(t *testing.T) {
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
-	if err := ReadyHandler(pool, nil)(c); err != nil {
+	if err := ReadyHandler(pool)(c); err != nil {
 		t.Fatal(err)
 	}
 	if rec.Code != http.StatusServiceUnavailable {

@@ -9,8 +9,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: "1.26.5"
       - run: go mod download
@@ -21,6 +21,6 @@ jobs:
           echo "Total coverage: ${total}%"
           awk -v cov="$total" 'BEGIN { exit !(cov >= 58) }'
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v9
         with:
-          version: v1.64
+          version: v2.4.0

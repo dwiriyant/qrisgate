@@ -9,7 +9,6 @@ import (
 type Config struct {
 	Addr              string
 	DatabaseURL       string
-	RedisAddr         string
 	AdminToken        string
 	OTELEndpoint      string
 	OTELService       string
@@ -28,7 +27,6 @@ func Load() Config {
 	return Config{
 		Addr:             getenv("ADDR", ":8080"),
 		DatabaseURL:      getenv("DATABASE_URL", "postgres://qrisgate:qrisgate@localhost:5432/qrisgate?sslmode=disable"),
-		RedisAddr:        getenv("REDIS_ADDR", "localhost:6379"),
 		AdminToken:       os.Getenv("ADMIN_TOKEN"),
 		OTELEndpoint:     os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"),
 		OTELService:      getenv("OTEL_SERVICE_NAME", "qrisgate-api"),

@@ -4,11 +4,10 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"golang.org/x/time/rate"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
+	"golang.org/x/time/rate"
 
 	"github.com/qrisgate/qrisgate/internal/admin"
 	"github.com/qrisgate/qrisgate/internal/config"
@@ -20,14 +19,13 @@ import (
 type Deps struct {
 	Config  config.Config
 	Pool    *pgxpool.Pool
-	Redis   *redis.Client
 	Admin   *admin.Handler
 	Payment *payment.Handler
 }
 
 func Register(e *echo.Echo, d Deps) {
 	e.GET("/healthz", func(c echo.Context) error { return c.NoContent(200) })
-	e.GET("/readyz", health.ReadyHandler(d.Pool, d.Redis))
+	e.GET("/readyz", health.ReadyHandler(d.Pool))
 
 	if d.Config.SwaggerEnabled() {
 		registerSwagger(e, openapi.Spec)

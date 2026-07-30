@@ -14,7 +14,7 @@ paths:
           description: OK
   /readyz:
     get:
-      summary: Readiness probe (Postgres + optional Redis)
+      summary: Readiness probe (Postgres)
       responses:
         "200":
           description: Ready
