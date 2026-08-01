@@ -1,0 +1,30 @@
+# Pre-built image from Docker Hub (see README — Install).
+# Requires: DOCKERHUB_USER, QRISGATE_TAG, ADMIN_TOKEN
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: qrisgate
+      POSTGRES_PASSWORD: qrisgate
+      POSTGRES_DB: qrisgate
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U qrisgate"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    image: ${DOCKERHUB_USER:-qrisgate}/qrisgate:${QRISGATE_TAG:-latest}
+    environment:
+      ADDR: ":8080"
+      DATABASE_URL: postgres://qrisgate:qrisgate@postgres:5432/qrisgate?sslmode=disable
+      ADMIN_TOKEN: ${ADMIN_TOKEN:?set ADMIN_TOKEN}
+      METRICS_ADDR: ":9090"
+    ports:
+      - "8080:8080"
+      - "9090:9090"
+    depends_on:
+      postgres:
+        condition: service_healthy

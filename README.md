@@ -22,6 +22,48 @@ Built with Go 1.26, [Echo v4](https://echo.labstack.com/), [pgx v5](https://gith
 - Prometheus metrics on a separate port (`METRICS_ADDR`)
 - Optional OTLP tracing via `OTEL_EXPORTER_OTLP_ENDPOINT`
 
+## Install
+
+### Docker Compose — build from source (dev)
+
+```bash
+git clone https://github.com/qrisgate/qrisgate.git
+cd qrisgate
+cp .env.example .env
+docker compose up --build -d
+```
+
+API: http://localhost:8080 · Metrics: http://localhost:9090/metrics
+
+### Docker Hub (production)
+
+Image: [`qrisgate/qrisgate`](https://hub.docker.com/r/qrisgate/qrisgate) — pick a tag from [Releases](https://github.com/qrisgate/qrisgate/releases) (`v0.1.0` → `0.1.0`).
+
+Pull the image:
+
+```bash
+docker pull qrisgate/qrisgate:0.1.0
+# or latest: docker pull qrisgate/qrisgate:latest
+```
+
+Run the full stack (Postgres + API):
+
+```bash
+git clone https://github.com/qrisgate/qrisgate.git
+cd qrisgate
+cp .env.example .env
+# set ADMIN_TOKEN
+
+export QRISGATE_TAG=0.1.0
+export ADMIN_TOKEN=your-secret
+make docker-hub-up
+curl -s http://127.0.0.1:8080/healthz
+```
+
+`docker compose -f docker-compose.hub.yml pull` also works if you skip `docker pull` above.
+
+Pin a release tag in production; avoid `latest`.
+
 ## Quick start
 
 ```bash
@@ -140,7 +182,9 @@ db/migrations/    Goose SQL
 make test
 make lint
 make tidy
-go run ./cmd/api
+make run-api
+make docker-up       # Postgres + API (build from source)
+make docker-hub-up   # Postgres + API (pull from Docker Hub)
 ```
 
 Migrations run automatically on API startup (`goose`).

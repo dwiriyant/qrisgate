@@ -1,4 +1,4 @@
-.PHONY: test test-cover lint tidy run-api migrate docker-up docker-obs docker-down
+.PHONY: test test-cover lint tidy run-api migrate docker-up docker-hub-up docker-obs docker-down
 
 test:
 	go test ./...
@@ -21,6 +21,9 @@ migrate:
 
 docker-up:
 	docker compose up --build -d
+
+docker-hub-up:
+	docker compose -f docker-compose.hub.yml up -d
 
 docker-obs:
 	docker compose -f docker-compose.yml -f docker-compose.obs.yml up --build -d
