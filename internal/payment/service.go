@@ -21,11 +21,22 @@ type PaymentStore interface {
 	GetByID(ctx context.Context, id string) (*domain.Payment, error)
 	Create(ctx context.Context, p *domain.Payment) error
 	InsertEvent(ctx context.Context, paymentID, eventType string, payload []byte) error
+	MarkPaid(ctx context.Context, id string) (*domain.Payment, error)
+}
+
+type WebhookLister interface {
+	ListByAppID(ctx context.Context, appID string) ([]*domain.WebhookEndpoint, error)
+}
+
+type PaidDispatcher interface {
+	DispatchPaid(ctx context.Context, p *domain.Payment, hooks []*domain.WebhookEndpoint) error
 }
 
 type Service struct {
 	apps        AppLookup
 	payments    PaymentStore
+	webhooks    WebhookLister
+	dispatcher  PaidDispatcher
 	defaultTTL  time.Duration
 }
 
@@ -34,6 +45,12 @@ func NewService(apps AppLookup, payments PaymentStore, defaultTTL time.Duration)
 		defaultTTL = 15 * time.Minute
 	}
 	return &Service{apps: apps, payments: payments, defaultTTL: defaultTTL}
+}
+
+func (s *Service) WithPaidNotify(webhooks WebhookLister, dispatcher PaidDispatcher) *Service {
+	s.webhooks = webhooks
+	s.dispatcher = dispatcher
+	return s
 }
 
 type FeeInput struct {
@@ -139,6 +156,33 @@ func (s *Service) Get(ctx context.Context, apiKey, id string) (*PaymentResponse,
 	}
 	if p.AppID != app.ID {
 		return nil, domain.ErrNotFound
+	}
+	return s.toResponse(p)
+}
+
+func (s *Service) MarkPaid(ctx context.Context, id string) (*PaymentResponse, error) {
+	if id == "" {
+		return nil, domain.ErrNotFound
+	}
+	existing, err := s.payments.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if existing.Status == domain.PaymentPaid {
+		return s.toResponse(existing)
+	}
+	p, err := s.payments.MarkPaid(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	payload, _ := json.Marshal(map[string]any{"order_id": p.OrderID, "amount": p.Amount, "status": p.Status})
+	_ = s.payments.InsertEvent(ctx, p.ID, "payment.paid", payload)
+	if s.dispatcher != nil {
+		var hooks []*domain.WebhookEndpoint
+		if s.webhooks != nil {
+			hooks, _ = s.webhooks.ListByAppID(ctx, p.AppID)
+		}
+		_ = s.dispatcher.DispatchPaid(ctx, p, hooks)
 	}
 	return s.toResponse(p)
 }

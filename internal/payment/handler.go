@@ -53,3 +53,18 @@ func (h *Handler) Get(c echo.Context) error {
 	}
 	return response.OK(c, out)
 }
+
+func (h *Handler) MarkPaid(c echo.Context) error {
+	out, err := h.svc.MarkPaid(c.Request().Context(), c.Param("id"))
+	if err != nil {
+		switch {
+		case errors.Is(err, domain.ErrNotFound):
+			return response.NotFound(c)
+		case errors.Is(err, domain.ErrConflict):
+			return response.Conflict(c, "payment cannot be marked paid")
+		default:
+			return response.Internal(c)
+		}
+	}
+	return response.OK(c, out)
+}

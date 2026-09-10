@@ -146,3 +146,25 @@ func TestHandler_Get_wrongTenant(t *testing.T) {
 		t.Fatalf("status=%d", rec.Code)
 	}
 }
+
+func TestHandler_MarkPaid(t *testing.T) {
+	h, e, store := testPaymentHandler(t)
+	static := qris.SampleStaticQRIS()
+	store.byOrder["app-1:ORD-1"] = &domain.Payment{
+		ID: "pay-99", AppID: "app-1", OrderID: "ORD-1", Amount: 1000,
+		QRISString: static, Status: domain.PaymentPending,
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/payments/pay-99/paid", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("pay-99")
+
+	if err := h.MarkPaid(c); err != nil {
+		t.Fatal(err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+}

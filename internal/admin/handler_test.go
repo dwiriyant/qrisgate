@@ -109,6 +109,24 @@ func TestHandler_CreateWebhook_notFound(t *testing.T) {
 	}
 }
 
+func TestHandler_UpdateApp(t *testing.T) {
+	h, e := testHandler(t, "admin")
+	body := `{"merchant_qris":"` + qris.SampleStaticQRIS() + `"}`
+	req := httptest.NewRequest(http.MethodPatch, "/v1/apps/app-1", strings.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("app-1")
+
+	if err := h.UpdateApp(c); err != nil {
+		t.Fatal(err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestAdminAuth(t *testing.T) {
 	e := echo.New()
 	e.GET("/admin", func(c echo.Context) error { return c.NoContent(http.StatusOK) }, AdminAuth("secret"))

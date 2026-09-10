@@ -66,3 +66,14 @@ func (r *AppRepository) GetByID(ctx context.Context, id string) (*domain.App, er
 	}
 	return &a, nil
 }
+
+func (r *AppRepository) UpdateMerchantQRIS(ctx context.Context, id, merchantQRIS string) (*domain.App, error) {
+	tag, err := r.pool.Exec(ctx, `UPDATE apps SET merchant_qris = $1 WHERE id = $2`, merchantQRIS, id)
+	if err != nil {
+		return nil, err
+	}
+	if tag.RowsAffected() == 0 {
+		return nil, domain.ErrNotFound
+	}
+	return r.GetByID(ctx, id)
+}

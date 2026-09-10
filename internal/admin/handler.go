@@ -55,6 +55,27 @@ func (h *Handler) CreateWebhook(c echo.Context) error {
 	return response.Created(c, out)
 }
 
+func (h *Handler) UpdateApp(c echo.Context) error {
+	var in UpdateAppInput
+	if err := c.Bind(&in); err != nil {
+		return response.BadRequest(c, "invalid json")
+	}
+	out, err := h.svc.UpdateApp(c.Request().Context(), c.Param("id"), in)
+	if err != nil {
+		switch {
+		case errors.Is(err, domain.ErrInvalidInput):
+			return response.BadRequest(c, "merchant_qris is required")
+		case errors.Is(err, domain.ErrInvalidQRIS):
+			return response.BadRequest(c, "invalid merchant_qris")
+		case errors.Is(err, domain.ErrNotFound):
+			return response.NotFound(c)
+		default:
+			return response.Internal(c)
+		}
+	}
+	return response.OK(c, out)
+}
+
 func AdminAuth(token string) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {

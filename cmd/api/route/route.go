@@ -34,7 +34,10 @@ func Register(e *echo.Echo, d Deps) {
 	v1 := e.Group("/v1")
 	adminGroup := v1.Group("/apps", admin.AdminAuth(d.Config.AdminToken))
 	adminGroup.POST("", d.Admin.CreateApp)
+	adminGroup.PATCH("/:id", d.Admin.UpdateApp)
 	adminGroup.POST("/:id/webhooks", d.Admin.CreateWebhook)
+
+	v1.POST("/payments/:id/paid", d.Payment.MarkPaid, admin.AdminAuth(d.Config.AdminToken))
 
 	pay := v1.Group("/payments", rateLimit(d.Config.RateLimitPerMin))
 	pay.POST("", d.Payment.Create)

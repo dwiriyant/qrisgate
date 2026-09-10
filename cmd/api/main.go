@@ -19,6 +19,7 @@ import (
 	"github.com/qrisgate/qrisgate/internal/observability"
 	"github.com/qrisgate/qrisgate/internal/payment"
 	"github.com/qrisgate/qrisgate/internal/repository/postgres"
+	"github.com/qrisgate/qrisgate/internal/webhook"
 )
 
 func main() {
@@ -57,7 +58,8 @@ func main() {
 	webhookRepo := postgres.NewWebhookRepository(pool)
 
 	adminSvc := admin.NewService(appRepo, webhookRepo)
-	paySvc := payment.NewService(appRepo, payRepo, cfg.DefaultExpiresIn)
+	paySvc := payment.NewService(appRepo, payRepo, cfg.DefaultExpiresIn).
+		WithPaidNotify(webhookRepo, webhook.NewDispatcher())
 
 	e := route.NewEcho(cfg, cfg.OTELService)
 	route.Register(e, route.Deps{

@@ -50,6 +50,29 @@ func (r *PaymentRepository) Create(ctx context.Context, p *domain.Payment) error
 	return err
 }
 
+func (r *PaymentRepository) MarkPaid(ctx context.Context, id string) (*domain.Payment, error) {
+	now := time.Now().UTC()
+	tag, err := r.pool.Exec(ctx, `
+		UPDATE payments SET status = $1, updated_at = $2
+		WHERE id = $3 AND status = $4`,
+		domain.PaymentPaid, now, id, domain.PaymentPending,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if tag.RowsAffected() == 0 {
+		p, getErr := r.GetByID(ctx, id)
+		if getErr != nil {
+			return nil, getErr
+		}
+		if p.Status == domain.PaymentPaid {
+			return p, nil
+		}
+		return nil, domain.ErrConflict
+	}
+	return r.GetByID(ctx, id)
+}
+
 func (r *PaymentRepository) InsertEvent(ctx context.Context, paymentID, eventType string, payload []byte) error {
 	_, err := r.pool.Exec(ctx, `
 		INSERT INTO payment_events (id, payment_id, type, payload, created_at)

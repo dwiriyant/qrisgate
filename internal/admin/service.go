@@ -14,6 +14,7 @@ import (
 type AppStore interface {
 	Create(ctx context.Context, name, apiKeyHash, merchantQRIS string) (*domain.App, error)
 	GetByID(ctx context.Context, id string) (*domain.App, error)
+	UpdateMerchantQRIS(ctx context.Context, id, merchantQRIS string) (*domain.App, error)
 }
 
 type WebhookStore interface {
@@ -96,6 +97,26 @@ func (s *Service) CreateWebhook(ctx context.Context, appID string, in CreateWebh
 	}
 	ep.Secret = ""
 	return &CreateWebhookOutput{Webhook: ep, Secret: reveal}, nil
+}
+
+type UpdateAppInput struct {
+	MerchantQRIS string `json:"merchant_qris"`
+}
+
+func (s *Service) UpdateApp(ctx context.Context, id string, in UpdateAppInput) (*domain.App, error) {
+	if id == "" || in.MerchantQRIS == "" {
+		return nil, domain.ErrInvalidInput
+	}
+	v := qris.Validate(in.MerchantQRIS)
+	if !v.Valid {
+		return nil, domain.ErrInvalidQRIS
+	}
+	app, err := s.apps.UpdateMerchantQRIS(ctx, id, in.MerchantQRIS)
+	if err != nil {
+		return nil, err
+	}
+	app.APIKeyHash = ""
+	return app, nil
 }
 
 func generateWebhookSecret() (string, error) {

@@ -47,6 +47,18 @@ func (m *mockPayments) Create(ctx context.Context, p *domain.Payment) error {
 	return nil
 }
 
+func (m *mockPayments) MarkPaid(ctx context.Context, id string) (*domain.Payment, error) {
+	p, err := m.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if p.Status != domain.PaymentPending {
+		return nil, domain.ErrConflict
+	}
+	p.Status = domain.PaymentPaid
+	return p, nil
+}
+
 func (m *mockPayments) InsertEvent(ctx context.Context, paymentID, eventType string, payload []byte) error {
 	return nil
 }
@@ -178,5 +190,66 @@ func TestNewService_defaultTTL(t *testing.T) {
 	svc := NewService(&mockApp{}, &mockPayments{byOrder: map[string]*domain.Payment{}}, 0)
 	if svc.defaultTTL != 15*time.Minute {
 		t.Fatalf("ttl=%v", svc.defaultTTL)
+	}
+}
+
+type mockHooks struct {
+	hooks []*domain.WebhookEndpoint
+}
+
+func (m *mockHooks) ListByAppID(ctx context.Context, appID string) ([]*domain.WebhookEndpoint, error) {
+	return m.hooks, nil
+}
+
+type mockDispatch struct {
+	called int
+	last   *domain.Payment
+}
+
+func (m *mockDispatch) DispatchPaid(ctx context.Context, p *domain.Payment, hooks []*domain.WebhookEndpoint) error {
+	m.called++
+	m.last = p
+	return nil
+}
+
+func TestMarkPaid(t *testing.T) {
+	static := qris.SampleStaticQRIS()
+	store := &mockPayments{byOrder: map[string]*domain.Payment{}}
+	store.byOrder["app-1:ORD-1"] = &domain.Payment{
+		ID: "pay-1", AppID: "app-1", OrderID: "ORD-1", Amount: 1000,
+		QRISString: static, Status: domain.PaymentPending,
+	}
+	disp := &mockDispatch{}
+	svc := NewService(&mockApp{app: &domain.App{ID: "app-1"}}, store, time.Minute).
+		WithPaidNotify(&mockHooks{hooks: []*domain.WebhookEndpoint{{URL: "https://example.com/hook", Secret: "s"}}}, disp)
+
+	out, err := svc.MarkPaid(context.Background(), "pay-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Status != string(domain.PaymentPaid) {
+		t.Fatalf("status=%s", out.Status)
+	}
+	if disp.called != 1 {
+		t.Fatalf("dispatch=%d", disp.called)
+	}
+}
+
+func TestMarkPaid_idempotent(t *testing.T) {
+	static := qris.SampleStaticQRIS()
+	store := &mockPayments{byOrder: map[string]*domain.Payment{}}
+	store.byOrder["app-1:ORD-1"] = &domain.Payment{
+		ID: "pay-1", AppID: "app-1", OrderID: "ORD-1", Amount: 1000,
+		QRISString: static, Status: domain.PaymentPaid,
+	}
+	disp := &mockDispatch{}
+	svc := NewService(&mockApp{app: &domain.App{ID: "app-1"}}, store, time.Minute).WithPaidNotify(&mockHooks{}, disp)
+
+	out, err := svc.MarkPaid(context.Background(), "pay-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Status != string(domain.PaymentPaid) || disp.called != 0 {
+		t.Fatalf("status=%s dispatch=%d", out.Status, disp.called)
 	}
 }

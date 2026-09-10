@@ -38,6 +38,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CreateAppResponse"
+  /v1/apps/{id}:
+    patch:
+      summary: Update merchant QRIS payload (admin)
+      security:
+        - AdminBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [merchant_qris]
+              properties:
+                merchant_qris:
+                  type: string
+      responses:
+        "200":
+          description: Updated
   /v1/apps/{id}/webhooks:
     post:
       summary: Register webhook endpoint (admin)
@@ -85,6 +109,24 @@ paths:
       summary: Get payment
       security:
         - ApiKey: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentResponse"
+  /v1/payments/{id}/paid:
+    post:
+      summary: Mark payment paid and dispatch webhooks (admin)
+      security:
+        - AdminBearer: []
       parameters:
         - name: id
           in: path

@@ -51,6 +51,13 @@ func (stubAppStore) GetByID(ctx context.Context, id string) (*domain.App, error)
 	return nil, domain.ErrNotFound
 }
 
+func (stubAppStore) UpdateMerchantQRIS(ctx context.Context, id, merchantQRIS string) (*domain.App, error) {
+	if id != "app-1" {
+		return nil, domain.ErrNotFound
+	}
+	return &domain.App{ID: "app-1", MerchantQRIS: merchantQRIS}, nil
+}
+
 func (stubAppStore) GetByAPIKeyHash(ctx context.Context, hash string) (*domain.App, error) {
 	return &domain.App{ID: "app-1", MerchantQRIS: qris.SampleStaticQRIS()}, nil
 }
@@ -81,6 +88,15 @@ func (s *stubPayStore) Create(ctx context.Context, p *domain.Payment) error {
 	return nil
 }
 
+func (s *stubPayStore) MarkPaid(ctx context.Context, id string) (*domain.Payment, error) {
+	p, err := s.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	p.Status = domain.PaymentPaid
+	return p, nil
+}
+
 func (s *stubPayStore) InsertEvent(ctx context.Context, paymentID, eventType string, payload []byte) error {
 	return nil
 }
@@ -89,6 +105,10 @@ type stubWebhookStore struct{}
 
 func (stubWebhookStore) Create(ctx context.Context, appID, url, secret string) (*domain.WebhookEndpoint, error) {
 	return &domain.WebhookEndpoint{ID: "wh-1", AppID: appID, URL: url}, nil
+}
+
+func (stubWebhookStore) ListByAppID(ctx context.Context, appID string) ([]*domain.WebhookEndpoint, error) {
+	return nil, nil
 }
 
 func TestRegister_healthz(t *testing.T) {

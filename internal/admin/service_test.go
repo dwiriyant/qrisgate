@@ -27,6 +27,15 @@ func (m *mockAppStore) GetByID(ctx context.Context, id string) (*domain.App, err
 	return nil, domain.ErrNotFound
 }
 
+func (m *mockAppStore) UpdateMerchantQRIS(ctx context.Context, id, merchantQRIS string) (*domain.App, error) {
+	a, err := m.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	a.MerchantQRIS = merchantQRIS
+	return a, nil
+}
+
 type mockWebhookStore struct {
 	created []*domain.WebhookEndpoint
 }
@@ -112,5 +121,35 @@ func TestCreateWebhook_customSecret(t *testing.T) {
 	}
 	if out.Secret != "" {
 		t.Fatal("should not reveal provided secret")
+	}
+}
+
+func TestUpdateApp(t *testing.T) {
+	static := qris.SampleStaticQRIS()
+	apps := &mockAppStore{apps: map[string]*domain.App{"app-1": {ID: "app-1", MerchantQRIS: "old"}}}
+	svc := NewService(apps, &mockWebhookStore{})
+	out, err := svc.UpdateApp(context.Background(), "app-1", UpdateAppInput{MerchantQRIS: static})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.MerchantQRIS != static {
+		t.Fatalf("qris=%s", out.MerchantQRIS)
+	}
+}
+
+func TestUpdateApp_notFound(t *testing.T) {
+	svc := NewService(&mockAppStore{apps: map[string]*domain.App{}}, &mockWebhookStore{})
+	_, err := svc.UpdateApp(context.Background(), "missing", UpdateAppInput{MerchantQRIS: qris.SampleStaticQRIS()})
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestUpdateApp_invalidQRIS(t *testing.T) {
+	apps := &mockAppStore{apps: map[string]*domain.App{"app-1": {ID: "app-1"}}}
+	svc := NewService(apps, &mockWebhookStore{})
+	_, err := svc.UpdateApp(context.Background(), "app-1", UpdateAppInput{MerchantQRIS: "nope"})
+	if !errors.Is(err, domain.ErrInvalidQRIS) {
+		t.Fatalf("err=%v", err)
 	}
 }
