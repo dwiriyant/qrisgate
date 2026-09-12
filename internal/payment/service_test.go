@@ -96,6 +96,23 @@ func (m *mockPayments) ClaimByAmount(ctx context.Context, appID, provider, exter
 	return best, false, nil
 }
 
+func (m *mockPayments) ExpirePending(ctx context.Context, now time.Time, limit int) (int64, error) {
+	var n int64
+	for _, p := range m.byOrder {
+		if p.Status != domain.PaymentPending || p.ExpiresAt == nil {
+			continue
+		}
+		if !p.ExpiresAt.After(now) {
+			p.Status = domain.PaymentExpired
+			n++
+			if limit > 0 && n >= int64(limit) {
+				break
+			}
+		}
+	}
+	return n, nil
+}
+
 func TestCreate_happyPath(t *testing.T) {
 	static := qris.SampleStaticQRIS()
 	app := &domain.App{ID: "app-1", MerchantQRIS: static}
@@ -351,5 +368,44 @@ func TestClaim_scopesToApp(t *testing.T) {
 	})
 	if !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestExpireOnce(t *testing.T) {
+	past := time.Now().UTC().Add(-time.Minute)
+	future := time.Now().UTC().Add(time.Hour)
+	store := &mockPayments{byOrder: map[string]*domain.Payment{
+		"app-1:old": {
+			ID: "pay-old", AppID: "app-1", OrderID: "old", Amount: 1000,
+			Status: domain.PaymentPending, ExpiresAt: &past,
+		},
+		"app-1:fresh": {
+			ID: "pay-fresh", AppID: "app-1", OrderID: "fresh", Amount: 1000,
+			Status: domain.PaymentPending, ExpiresAt: &future,
+		},
+	}}
+	svc := NewService(&mockApp{}, store, time.Minute)
+	svc.expireOnce(context.Background())
+	if store.byOrder["app-1:old"].Status != domain.PaymentExpired {
+		t.Fatalf("old status=%s", store.byOrder["app-1:old"].Status)
+	}
+	if store.byOrder["app-1:fresh"].Status != domain.PaymentPending {
+		t.Fatalf("fresh status=%s", store.byOrder["app-1:fresh"].Status)
+	}
+}
+
+func TestRunExpireLoop_cancels(t *testing.T) {
+	svc := NewService(&mockApp{}, &mockPayments{byOrder: map[string]*domain.Payment{}}, time.Minute)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		svc.RunExpireLoop(ctx, time.Hour)
+		close(done)
+	}()
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("expire loop did not exit")
 	}
 }

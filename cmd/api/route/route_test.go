@@ -105,6 +105,10 @@ func (s *stubPayStore) ClaimByAmount(ctx context.Context, appID, provider, exter
 	return nil, false, domain.ErrNotFound
 }
 
+func (s *stubPayStore) ExpirePending(ctx context.Context, now time.Time, limit int) (int64, error) {
+	return 0, nil
+}
+
 type stubWebhookStore struct{}
 
 func (stubWebhookStore) Create(ctx context.Context, appID, url, secret string) (*domain.WebhookEndpoint, error) {

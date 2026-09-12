@@ -23,6 +23,7 @@ type PaymentStore interface {
 	InsertEvent(ctx context.Context, paymentID, eventType string, payload []byte) error
 	MarkPaid(ctx context.Context, id string) (*domain.Payment, error)
 	ClaimByAmount(ctx context.Context, appID, provider, externalID string, amount int64, paidAt time.Time, lookback time.Duration) (*domain.Payment, bool, error)
+	ExpirePending(ctx context.Context, now time.Time, limit int) (int64, error)
 }
 
 type WebhookLister interface {
@@ -238,4 +239,34 @@ func (s *Service) toResponse(p *domain.Payment) (*PaymentResponse, error) {
 		ExpiresAt:     p.ExpiresAt,
 		CallbackURL:   p.CallbackURL,
 	}, nil
+}
+
+const defaultExpireEvery = time.Minute
+
+// RunExpireLoop periodically marks past-due pending payments as expired until ctx is cancelled.
+func (s *Service) RunExpireLoop(ctx context.Context, every time.Duration) {
+	if every <= 0 {
+		every = defaultExpireEvery
+	}
+	t := time.NewTicker(every)
+	defer t.Stop()
+	s.expireOnce(ctx)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			s.expireOnce(ctx)
+		}
+	}
+}
+
+func (s *Service) expireOnce(ctx context.Context) {
+	n, err := s.payments.ExpirePending(ctx, time.Now().UTC(), 500)
+	if err != nil {
+		return
+	}
+	if n > 0 {
+		observability.PaymentsExpired.Add(float64(n))
+	}
 }

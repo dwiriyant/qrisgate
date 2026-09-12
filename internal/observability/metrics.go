@@ -32,10 +32,13 @@ var (
 	PaymentsPaid = prometheus.NewCounter(
 		prometheus.CounterOpts{Name: "payments_paid_total", Help: "Payments marked paid"},
 	)
+	PaymentsExpired = prometheus.NewCounter(
+		prometheus.CounterOpts{Name: "payments_expired_total", Help: "Payments marked expired by sweeper"},
+	)
 )
 
 func init() {
-	prometheus.MustRegister(HTTPRequests, HTTPDuration, HTTPInFlight, PaymentsCreated, PaymentsPaid)
+	prometheus.MustRegister(HTTPRequests, HTTPDuration, HTTPInFlight, PaymentsCreated, PaymentsPaid, PaymentsExpired)
 }
 
 // StartMetricsServer listens on addr in a goroutine (separate from API).

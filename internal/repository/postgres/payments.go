@@ -82,6 +82,39 @@ func (r *PaymentRepository) InsertEvent(ctx context.Context, paymentID, eventTyp
 	return err
 }
 
+// ExpirePending flips pending payments whose expires_at has passed.
+// ponytail: batch LIMIT + SKIP LOCKED so multi-replica API is safe enough; no expire webhooks yet.
+func (r *PaymentRepository) ExpirePending(ctx context.Context, now time.Time, limit int) (int64, error) {
+	if now.IsZero() {
+		now = time.Now().UTC()
+	} else {
+		now = now.UTC()
+	}
+	if limit <= 0 {
+		limit = 500
+	}
+	tag, err := r.pool.Exec(ctx, `
+		WITH due AS (
+			SELECT id FROM payments
+			WHERE status = $1
+			  AND expires_at IS NOT NULL
+			  AND expires_at <= $2
+			ORDER BY expires_at ASC
+			LIMIT $3
+			FOR UPDATE SKIP LOCKED
+		)
+		UPDATE payments p
+		SET status = $4, updated_at = $2
+		FROM due
+		WHERE p.id = due.id`,
+		domain.PaymentPending, now, limit, domain.PaymentExpired,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
 // ClaimByAmount matches the oldest eligible pending payment for appID to a provider pay-in.
 // Returns (payment, alreadyClaimed, err). alreadyClaimed means this provider+external_id was settled before.
 func (r *PaymentRepository) ClaimByAmount(ctx context.Context, appID, provider, externalID string, amount int64, paidAt time.Time, lookback time.Duration) (*domain.Payment, bool, error) {

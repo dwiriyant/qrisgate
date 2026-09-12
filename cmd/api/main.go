@@ -81,6 +81,7 @@ func main() {
 	runCtx, runCancel := context.WithCancel(context.Background())
 	defer runCancel()
 	go dispatcher.RunRetryLoop(runCtx, 30*time.Second)
+	go paySvc.RunExpireLoop(runCtx, time.Minute)
 
 	go func() {
 		log.Info("api listening", "addr", cfg.Addr)

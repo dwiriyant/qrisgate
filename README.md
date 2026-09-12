@@ -16,6 +16,7 @@ Built with Go 1.26, [Echo v4](https://echo.labstack.com/), [pgx v5](https://gith
 - Optional fee, expiry, and per-payment callback URL
 - Webhook endpoint registration
 - Admin claim by amount (`POST /v1/payments/claim`) for paywatch
+- Background sweep marks past-due pending payments `expired`
 - Webhook delivery with `Idempotency-Key`, sync retries, and async retry loop
 - Returns `qris_string` and `qr_image_base64` (PNG)
 - Readiness probe (`/readyz`) for Postgres
