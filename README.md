@@ -15,6 +15,8 @@ Built with Go 1.26, [Echo v4](https://echo.labstack.com/), [pgx v5](https://gith
 - Idempotent `POST /v1/payments` on `(app_id, order_id)`
 - Optional fee, expiry, and per-payment callback URL
 - Webhook endpoint registration
+- Admin claim by amount (`POST /v1/payments/claim`) for paywatch
+- Webhook delivery with `Idempotency-Key`, sync retries, and async retry loop
 - Returns `qris_string` and `qr_image_base64` (PNG)
 - Readiness probe (`/readyz`) for Postgres
 - Rate limiting and request body limits on payment routes
@@ -108,6 +110,8 @@ To trace locally without Docker, run [Jaeger all-in-one](https://www.jaegertraci
 | POST | `/v1/apps/:id/webhooks` | Bearer admin | Register HTTPS webhook |
 | POST | `/v1/payments` | `X-API-Key` | Create dynamic QR (idempotent) |
 | GET | `/v1/payments/:id` | `X-API-Key` | Fetch payment + QR |
+| POST | `/v1/payments/claim` | Bearer admin | Claim pending by amount for one app (paywatch) |
+| POST | `/v1/payments/:id/paid` | Bearer admin | Mark payment paid |
 
 See [internal/openapi/openapi.yaml](./internal/openapi/openapi.yaml) for the OpenAPI 3 spec. With `SWAGGER_ACTIVE=true` and `ENV=development`, browse the API at http://localhost:8080/swagger/
 
@@ -129,6 +133,17 @@ curl -s -X POST http://localhost:8080/v1/apps/$APP_ID/webhooks \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"url":"https://example.com/webhooks/qris"}'
+```
+
+### Claim payment (paywatch / admin)
+
+Matches the oldest pending payment **for that app** with the same amount (not expired, created within 24h of `paid_at`), marks it paid, and dispatches webhooks. Idempotent on `(provider, external_id)`.
+
+```bash
+curl -s -X POST http://localhost:8080/v1/payments/claim \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"app_id":"'$APP_ID'","amount":15000,"provider":"gobiz","external_id":"tx-123","paid_at":"2026-09-11T10:00:00Z"}'
 ```
 
 ### Create payment

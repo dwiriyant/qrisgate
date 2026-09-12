@@ -101,6 +101,10 @@ func (s *stubPayStore) InsertEvent(ctx context.Context, paymentID, eventType str
 	return nil
 }
 
+func (s *stubPayStore) ClaimByAmount(ctx context.Context, appID, provider, externalID string, amount int64, paidAt time.Time, lookback time.Duration) (*domain.Payment, bool, error) {
+	return nil, false, domain.ErrNotFound
+}
+
 type stubWebhookStore struct{}
 
 func (stubWebhookStore) Create(ctx context.Context, appID, url, secret string) (*domain.WebhookEndpoint, error) {

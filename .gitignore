@@ -8,3 +8,4 @@
 .vscode/
 coverage.out
 graphify-out/
+.DS_Store

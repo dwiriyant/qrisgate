@@ -168,3 +168,25 @@ func TestHandler_MarkPaid(t *testing.T) {
 		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestHandler_Claim(t *testing.T) {
+	h, e, store := testPaymentHandler(t)
+	static := qris.SampleStaticQRIS()
+	store.byOrder["app-1:ORD-1"] = &domain.Payment{
+		ID: "pay-claim", AppID: "app-1", OrderID: "ORD-1", Amount: 2000,
+		QRISString: static, Status: domain.PaymentPending, CreatedAt: time.Now().UTC(),
+	}
+
+	body := `{"app_id":"app-1","amount":2000,"provider":"gobiz","external_id":"tx-9","paid_at":"2026-09-11T10:00:00Z"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/payments/claim", strings.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := h.Claim(c); err != nil {
+		t.Fatal(err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+}

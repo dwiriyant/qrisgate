@@ -22,6 +22,7 @@ type PaymentStore interface {
 	Create(ctx context.Context, p *domain.Payment) error
 	InsertEvent(ctx context.Context, paymentID, eventType string, payload []byte) error
 	MarkPaid(ctx context.Context, id string) (*domain.Payment, error)
+	ClaimByAmount(ctx context.Context, appID, provider, externalID string, amount int64, paidAt time.Time, lookback time.Duration) (*domain.Payment, bool, error)
 }
 
 type WebhookLister interface {
@@ -175,7 +176,41 @@ func (s *Service) MarkPaid(ctx context.Context, id string) (*PaymentResponse, er
 	if err != nil {
 		return nil, err
 	}
-	payload, _ := json.Marshal(map[string]any{"order_id": p.OrderID, "amount": p.Amount, "status": p.Status})
+	return s.afterPaid(ctx, p, map[string]any{"order_id": p.OrderID, "amount": p.Amount, "status": p.Status})
+}
+
+type ClaimInput struct {
+	AppID      string    `json:"app_id"`
+	Amount     int64     `json:"amount"`
+	Provider   string    `json:"provider"`
+	ExternalID string    `json:"external_id"`
+	PaidAt     time.Time `json:"paid_at"`
+}
+
+// Claim matches a provider pay-in to a pending payment for one app (exact amount, FIFO) and marks it paid.
+func (s *Service) Claim(ctx context.Context, in ClaimInput) (*PaymentResponse, error) {
+	if in.AppID == "" || in.Amount <= 0 || in.Provider == "" || in.ExternalID == "" {
+		return nil, domain.ErrInvalidInput
+	}
+	p, already, err := s.payments.ClaimByAmount(ctx, in.AppID, in.Provider, in.ExternalID, in.Amount, in.PaidAt, 24*time.Hour)
+	if err != nil {
+		return nil, err
+	}
+	if already {
+		return s.toResponse(p)
+	}
+	return s.afterPaid(ctx, p, map[string]any{
+		"order_id":    p.OrderID,
+		"amount":      p.Amount,
+		"status":      p.Status,
+		"provider":    in.Provider,
+		"external_id": in.ExternalID,
+		"app_id":      in.AppID,
+	})
+}
+
+func (s *Service) afterPaid(ctx context.Context, p *domain.Payment, eventPayload map[string]any) (*PaymentResponse, error) {
+	payload, _ := json.Marshal(eventPayload)
 	_ = s.payments.InsertEvent(ctx, p.ID, "payment.paid", payload)
 	if s.dispatcher != nil {
 		var hooks []*domain.WebhookEndpoint

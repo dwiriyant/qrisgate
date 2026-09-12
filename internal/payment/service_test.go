@@ -22,6 +22,7 @@ func (m *mockApp) GetByAPIKeyHash(ctx context.Context, hash string) (*domain.App
 type mockPayments struct {
 	byOrder map[string]*domain.Payment
 	created []*domain.Payment
+	claims  map[string]string // provider:external_id -> payment id
 }
 
 func (m *mockPayments) GetByAppAndOrder(ctx context.Context, appID, orderID string) (*domain.Payment, error) {
@@ -61,6 +62,38 @@ func (m *mockPayments) MarkPaid(ctx context.Context, id string) (*domain.Payment
 
 func (m *mockPayments) InsertEvent(ctx context.Context, paymentID, eventType string, payload []byte) error {
 	return nil
+}
+
+func (m *mockPayments) ClaimByAmount(ctx context.Context, appID, provider, externalID string, amount int64, paidAt time.Time, lookback time.Duration) (*domain.Payment, bool, error) {
+	key := provider + ":" + externalID
+	if m.claims == nil {
+		m.claims = map[string]string{}
+	}
+	if id, ok := m.claims[key]; ok {
+		p, err := m.GetByID(ctx, id)
+		if err != nil {
+			return nil, false, err
+		}
+		if p.AppID != appID {
+			return nil, false, domain.ErrConflict
+		}
+		return p, true, nil
+	}
+	var best *domain.Payment
+	for _, p := range m.byOrder {
+		if p.AppID != appID || p.Status != domain.PaymentPending || p.Amount != amount {
+			continue
+		}
+		if best == nil || p.CreatedAt.Before(best.CreatedAt) {
+			best = p
+		}
+	}
+	if best == nil {
+		return nil, false, domain.ErrNotFound
+	}
+	best.Status = domain.PaymentPaid
+	m.claims[key] = best.ID
+	return best, false, nil
 }
 
 func TestCreate_happyPath(t *testing.T) {
@@ -251,5 +284,72 @@ func TestMarkPaid_idempotent(t *testing.T) {
 	}
 	if out.Status != string(domain.PaymentPaid) || disp.called != 0 {
 		t.Fatalf("status=%s dispatch=%d", out.Status, disp.called)
+	}
+}
+
+func TestClaim_matchesPendingAndDispatches(t *testing.T) {
+	static := qris.SampleStaticQRIS()
+	store := &mockPayments{byOrder: map[string]*domain.Payment{}}
+	store.byOrder["app-1:ORD-1"] = &domain.Payment{
+		ID: "pay-1", AppID: "app-1", OrderID: "ORD-1", Amount: 15000,
+		QRISString: static, Status: domain.PaymentPending, CreatedAt: time.Now().UTC().Add(-time.Minute),
+	}
+	disp := &mockDispatch{}
+	svc := NewService(&mockApp{app: &domain.App{ID: "app-1"}}, store, time.Minute).
+		WithPaidNotify(&mockHooks{hooks: []*domain.WebhookEndpoint{{URL: "https://example.com/hook"}}}, disp)
+
+	out, err := svc.Claim(context.Background(), ClaimInput{
+		AppID: "app-1", Amount: 15000, Provider: "gobiz", ExternalID: "tx-1", PaidAt: time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.ID != "pay-1" || out.Status != string(domain.PaymentPaid) {
+		t.Fatalf("%+v", out)
+	}
+	if disp.called != 1 {
+		t.Fatalf("dispatch=%d", disp.called)
+	}
+
+	out2, err := svc.Claim(context.Background(), ClaimInput{
+		AppID: "app-1", Amount: 15000, Provider: "gobiz", ExternalID: "tx-1", PaidAt: time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out2.ID != "pay-1" || disp.called != 1 {
+		t.Fatalf("idempotent claim failed: %+v dispatch=%d", out2, disp.called)
+	}
+}
+
+func TestClaim_notFound(t *testing.T) {
+	svc := NewService(&mockApp{app: &domain.App{ID: "app-1"}}, &mockPayments{byOrder: map[string]*domain.Payment{}}, time.Minute)
+	_, err := svc.Claim(context.Background(), ClaimInput{AppID: "app-1", Amount: 1000, Provider: "gobiz", ExternalID: "x"})
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestClaim_invalidInput(t *testing.T) {
+	svc := NewService(&mockApp{}, &mockPayments{byOrder: map[string]*domain.Payment{}}, time.Minute)
+	_, err := svc.Claim(context.Background(), ClaimInput{Amount: 1000, Provider: "gobiz", ExternalID: "x"})
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestClaim_scopesToApp(t *testing.T) {
+	static := qris.SampleStaticQRIS()
+	store := &mockPayments{byOrder: map[string]*domain.Payment{}}
+	store.byOrder["app-2:ORD-1"] = &domain.Payment{
+		ID: "pay-other", AppID: "app-2", OrderID: "ORD-1", Amount: 15000,
+		QRISString: static, Status: domain.PaymentPending, CreatedAt: time.Now().UTC().Add(-time.Minute),
+	}
+	svc := NewService(&mockApp{app: &domain.App{ID: "app-1"}}, store, time.Minute)
+	_, err := svc.Claim(context.Background(), ClaimInput{
+		AppID: "app-1", Amount: 15000, Provider: "gobiz", ExternalID: "tx-x",
+	})
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("err=%v", err)
 	}
 }

@@ -82,6 +82,98 @@ func (r *PaymentRepository) InsertEvent(ctx context.Context, paymentID, eventTyp
 	return err
 }
 
+// ClaimByAmount matches the oldest eligible pending payment for appID to a provider pay-in.
+// Returns (payment, alreadyClaimed, err). alreadyClaimed means this provider+external_id was settled before.
+func (r *PaymentRepository) ClaimByAmount(ctx context.Context, appID, provider, externalID string, amount int64, paidAt time.Time, lookback time.Duration) (*domain.Payment, bool, error) {
+	if appID == "" {
+		return nil, false, domain.ErrInvalidInput
+	}
+	if lookback <= 0 {
+		lookback = 24 * time.Hour
+	}
+	if paidAt.IsZero() {
+		paidAt = time.Now().UTC()
+	} else {
+		paidAt = paidAt.UTC()
+	}
+	createdFrom := paidAt.Add(-lookback)
+	createdTo := paidAt.Add(2 * time.Minute) // small clock skew
+
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	var existingPaymentID string
+	err = tx.QueryRow(ctx, `
+		SELECT payment_id FROM payment_claims
+		WHERE provider = $1 AND external_id = $2`, provider, externalID).Scan(&existingPaymentID)
+	if err == nil {
+		p, getErr := scanPayment(tx.QueryRow(ctx, `SELECT `+paymentCols+` FROM payments WHERE id = $1`, existingPaymentID))
+		if getErr != nil {
+			return nil, false, getErr
+		}
+		if p.AppID != appID {
+			return nil, false, domain.ErrConflict
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return nil, false, err
+		}
+		return p, true, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return nil, false, err
+	}
+
+	now := time.Now().UTC()
+	row := tx.QueryRow(ctx, `
+		SELECT `+paymentCols+`
+		FROM payments
+		WHERE app_id = $1
+		  AND status = $2
+		  AND amount = $3
+		  AND (expires_at IS NULL OR expires_at > $4)
+		  AND created_at >= $5
+		  AND created_at <= $6
+		ORDER BY created_at ASC
+		FOR UPDATE SKIP LOCKED
+		LIMIT 1`,
+		appID, domain.PaymentPending, amount, now, createdFrom, createdTo,
+	)
+	p, err := scanPayment(row)
+	if err != nil {
+		return nil, false, err
+	}
+
+	tag, err := tx.Exec(ctx, `
+		UPDATE payments SET status = $1, updated_at = $2
+		WHERE id = $3 AND status = $4`,
+		domain.PaymentPaid, now, p.ID, domain.PaymentPending,
+	)
+	if err != nil {
+		return nil, false, err
+	}
+	if tag.RowsAffected() == 0 {
+		return nil, false, domain.ErrConflict
+	}
+	p.Status = domain.PaymentPaid
+	p.UpdatedAt = now
+
+	_, err = tx.Exec(ctx, `
+		INSERT INTO payment_claims (id, payment_id, provider, external_id, amount, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6)`,
+		uuid.NewString(), p.ID, provider, externalID, amount, now,
+	)
+	if err != nil {
+		return nil, false, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, false, err
+	}
+	return p, false, nil
+}
+
 func nullIfEmpty(s string) *string {
 	if s == "" {
 		return nil

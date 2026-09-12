@@ -48,3 +48,28 @@ type PaymentEvent struct {
 	Payload   []byte
 	CreatedAt time.Time
 }
+
+type WebhookDeliveryStatus string
+
+const (
+	WebhookPending   WebhookDeliveryStatus = "pending"
+	WebhookDelivered WebhookDeliveryStatus = "delivered"
+	WebhookDead      WebhookDeliveryStatus = "dead"
+)
+
+// WebhookDelivery is one outbound webhook attempt track (idempotent per event_id+destination).
+type WebhookDelivery struct {
+	ID            string
+	PaymentID     string
+	Destination   string
+	EventID       string
+	Status        WebhookDeliveryStatus
+	Attempts      int
+	LastError     string
+	NextAttemptAt *time.Time
+	DeliveredAt   *time.Time
+	Payload       []byte
+	Secret        string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}

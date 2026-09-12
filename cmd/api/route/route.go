@@ -37,6 +37,7 @@ func Register(e *echo.Echo, d Deps) {
 	adminGroup.PATCH("/:id", d.Admin.UpdateApp)
 	adminGroup.POST("/:id/webhooks", d.Admin.CreateWebhook)
 
+	v1.POST("/payments/claim", d.Payment.Claim, admin.AdminAuth(d.Config.AdminToken))
 	v1.POST("/payments/:id/paid", d.Payment.MarkPaid, admin.AdminAuth(d.Config.AdminToken))
 
 	pay := v1.Group("/payments", rateLimit(d.Config.RateLimitPerMin))

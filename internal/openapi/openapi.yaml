@@ -122,6 +122,26 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PaymentResponse"
+  /v1/payments/claim:
+    post:
+      summary: Claim pending payment by amount from a provider pay-in (admin / paywatch)
+      security:
+        - AdminBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClaimRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentResponse"
+        "404":
+          description: No matching pending payment
   /v1/payments/{id}/paid:
     post:
       summary: Mark payment paid and dispatch webhooks (admin)
@@ -213,6 +233,24 @@ components:
         expires_in:
           type: integer
           description: TTL in seconds (overrides DEFAULT_EXPIRES_IN_SEC)
+    ClaimRequest:
+      type: object
+      required: [app_id, amount, provider, external_id]
+      properties:
+        app_id:
+          type: string
+          description: qrisgate app that owns the pending payment
+        amount:
+          type: integer
+          format: int64
+        provider:
+          type: string
+          example: gobiz
+        external_id:
+          type: string
+        paid_at:
+          type: string
+          format: date-time
     PaymentResponse:
       type: object
       properties:

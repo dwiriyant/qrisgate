@@ -58,8 +58,9 @@ func main() {
 	webhookRepo := postgres.NewWebhookRepository(pool)
 
 	adminSvc := admin.NewService(appRepo, webhookRepo)
+	dispatcher := webhook.NewDispatcher(webhookRepo).WithLogger(log)
 	paySvc := payment.NewService(appRepo, payRepo, cfg.DefaultExpiresIn).
-		WithPaidNotify(webhookRepo, webhook.NewDispatcher())
+		WithPaidNotify(webhookRepo, dispatcher)
 
 	e := route.NewEcho(cfg, cfg.OTELService)
 	route.Register(e, route.Deps{
@@ -76,6 +77,11 @@ func main() {
 		WriteTimeout: cfg.WriteTimeout,
 		IdleTimeout:  cfg.IdleTimeout,
 	}
+
+	runCtx, runCancel := context.WithCancel(context.Background())
+	defer runCancel()
+	go dispatcher.RunRetryLoop(runCtx, 30*time.Second)
+
 	go func() {
 		log.Info("api listening", "addr", cfg.Addr)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -87,6 +93,7 @@ func main() {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	<-stop
+	runCancel()
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

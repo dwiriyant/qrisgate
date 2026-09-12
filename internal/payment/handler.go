@@ -68,3 +68,24 @@ func (h *Handler) MarkPaid(c echo.Context) error {
 	}
 	return response.OK(c, out)
 }
+
+func (h *Handler) Claim(c echo.Context) error {
+	var in ClaimInput
+	if err := c.Bind(&in); err != nil {
+		return response.BadRequest(c, "invalid json")
+	}
+	out, err := h.svc.Claim(c.Request().Context(), in)
+	if err != nil {
+		switch {
+		case errors.Is(err, domain.ErrInvalidInput):
+			return response.BadRequest(c, "app_id, amount, provider, and external_id required")
+		case errors.Is(err, domain.ErrNotFound):
+			return response.NotFound(c)
+		case errors.Is(err, domain.ErrConflict):
+			return response.Conflict(c, "payment cannot be claimed")
+		default:
+			return response.Internal(c)
+		}
+	}
+	return response.OK(c, out)
+}
