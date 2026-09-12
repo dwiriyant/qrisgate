@@ -214,7 +214,7 @@ Issues and pull requests are welcome. For code changes:
 4. New DB changes → new file under `db/migrations/`.
 5. API changes → update `internal/openapi/openapi.yaml` and this README.
 
-You need Go **1.26+** and PostgreSQL. CI runs tests with a ~60% coverage floor.
+You need Go **1.26+** and PostgreSQL. CI runs tests with a ~55% coverage floor.
 
 ## Request flow (handlers)
 

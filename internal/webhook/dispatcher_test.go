@@ -167,3 +167,87 @@ func TestDispatchPaid_clientErrorDead(t *testing.T) {
 		t.Fatalf("status=%s", store.byKey[k].Status)
 	}
 }
+
+func TestAsyncBackoff(t *testing.T) {
+	cases := []struct {
+		n    int
+		want time.Duration
+	}{
+		{1, 30 * time.Second},
+		{2, time.Minute},
+		{3, 2 * time.Minute},
+		{4, 5 * time.Minute},
+		{5, 10 * time.Minute},
+		{6, 30 * time.Minute},
+		{7, time.Hour},
+	}
+	for _, tc := range cases {
+		if got := asyncBackoff(tc.n); got != tc.want {
+			t.Fatalf("n=%d got=%v want=%v", tc.n, got, tc.want)
+		}
+	}
+}
+
+func TestDispatchPaid_nilStoreRetries(t *testing.T) {
+	var hits int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		if hits < 2 {
+			w.WriteHeader(http.StatusBadGateway)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	d := NewDispatcher(nil)
+	d.sleep = func(time.Duration) {}
+	p := &domain.Payment{ID: "pay-4", OrderID: "ORD-4", Amount: 1000, CallbackURL: srv.URL}
+	if err := d.DispatchPaid(context.Background(), p, nil); err != nil {
+		t.Fatal(err)
+	}
+	if hits != 2 {
+		t.Fatalf("hits=%d", hits)
+	}
+}
+
+func TestRetryOnce_deliversPending(t *testing.T) {
+	var hits int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	store := &memStore{byKey: map[string]*domain.WebhookDelivery{}}
+	eventID := PaidEventID("pay-5")
+	store.byKey[store.key(eventID, srv.URL)] = &domain.WebhookDelivery{
+		ID: "d5", PaymentID: "pay-5", Destination: srv.URL, EventID: eventID,
+		Status: domain.WebhookPending, Payload: []byte(`{"id":"pay-5"}`), Secret: "s",
+	}
+	d := NewDispatcher(store)
+	d.sleep = func(time.Duration) {}
+	d.retryOnce(context.Background())
+	if hits != 1 {
+		t.Fatalf("hits=%d", hits)
+	}
+	if store.byKey[store.key(eventID, srv.URL)].Status != domain.WebhookDelivered {
+		t.Fatalf("not delivered")
+	}
+}
+
+func TestRunRetryLoop_cancels(t *testing.T) {
+	d := NewDispatcher(&memStore{})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		d.RunRetryLoop(ctx, time.Hour)
+		close(done)
+	}()
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("retry loop did not exit")
+	}
+}
